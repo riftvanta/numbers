@@ -1,0 +1,9 @@
+node_modules/
+.env
+.wwebjs_auth/
+.wwebjs_cache/
+session-*/
+progress.json
+validated_numbers.csv
+validation_report.json
+*.log

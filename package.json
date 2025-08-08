@@ -1,0 +1,27 @@
+{
+  "name": "numbers",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node main.js",
+    "generate": "node generate_numbers.js",
+    "validate": "node multi_whatsapp.js",
+    "validate:safe": "node multi_whatsapp_safe.js",
+    "stats": "node aggregator.js stats",
+    "export": "node aggregator.js export",
+    "logout": "node session_manager.js logout"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "csv-parser": "^3.2.0",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^17.2.1",
+    "prompts": "^2.4.2",
+    "puppeteer": "^24.16.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.31.0"
+  }
+}
