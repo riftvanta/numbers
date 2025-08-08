@@ -9,6 +9,7 @@ const { createObjectCsvWriter } = require('csv-writer');
 const WhatsAppAggregator = require('./aggregator');
 const { generateJordanianNumbers, saveNumbersToCSV, loadNumbersFromCSV } = require('./generate_numbers');
 const config = require('./config');
+const path = require('path');
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -51,6 +52,10 @@ class SafeWhatsAppValidator {
         this.results = [];
         this.sessionCheckCounts = new Map();
         this.sessionLastCheck = new Map();
+        
+        // Master file for immediate verified number appending
+        this.masterFile = path.join('data', 'whatsapp_verified_numbers.csv');
+        this.verifiedNumbers = new Set();
     }
 
     async initialize() {
@@ -64,6 +69,10 @@ class SafeWhatsAppValidator {
         console.log(`   • Batch Size: ${this.options.batchSize}`);
         console.log(`   • Break Duration: ${this.options.breakDuration}ms`);
         console.log(`   • Max checks/hour/session: ${this.options.maxChecksPerHour}\n`);
+        
+        // Initialize master file and load existing verified numbers
+        console.log('📊 Initializing master verification file...');
+        await this.initializeMasterFile();
         
         console.log(`🟢 Initializing ${this.options.sessions} WhatsApp session(s)...\n`);
         console.log('⚠️  Staggering session initialization to avoid detection...\n');
@@ -83,7 +92,8 @@ class SafeWhatsAppValidator {
         console.log('   • Random delays between checks');
         console.log('   • Regular breaks');
         console.log('   • Session rotation');
-        console.log('   • Rate limiting\n');
+        console.log('   • Rate limiting');
+        console.log('   • Immediate verified number saving\n');
     }
 
     async initializeSession(index) {
@@ -295,7 +305,7 @@ class SafeWhatsAppValidator {
             
             session.lastCheckTime = Date.now();
             
-            return {
+            const result = {
                 number: number,
                 whatsapp_id: whatsappId,
                 is_registered: isRegistered,
@@ -303,6 +313,13 @@ class SafeWhatsAppValidator {
                 status: 'success',
                 session_id: session.id
             };
+            
+            // Immediately append to master file if verified
+            if (isRegistered) {
+                await this.appendVerifiedNumberImmediately(result);
+            }
+            
+            return result;
         } catch (error) {
             session.errors++;
             
@@ -408,6 +425,83 @@ class SafeWhatsAppValidator {
         }
         
         console.log('✅ All sessions closed safely');
+    }
+
+    async initializeMasterFile() {
+        // Ensure data directory exists
+        if (!fs.existsSync('data')) {
+            fs.mkdirSync('data');
+        }
+        
+        // Load existing verified numbers into memory to avoid duplicates
+        if (fs.existsSync(this.masterFile)) {
+            const csv = require('csv-parser');
+            return new Promise((resolve, reject) => {
+                fs.createReadStream(this.masterFile)
+                    .pipe(csv())
+                    .on('data', (row) => {
+                        if (row.number) {
+                            this.verifiedNumbers.add(row.number);
+                        }
+                    })
+                    .on('end', () => {
+                        console.log(`📊 Loaded ${this.verifiedNumbers.size} existing verified numbers`);
+                        resolve();
+                    })
+                    .on('error', reject);
+            });
+        } else {
+            // Create file with headers if it doesn't exist
+            const csvWriter = createObjectCsvWriter({
+                path: this.masterFile,
+                header: [
+                    { id: 'number', title: 'number' },
+                    { id: 'whatsapp_id', title: 'whatsapp_id' },
+                    { id: 'has_profile_pic', title: 'has_profile_pic' },
+                    { id: 'about', title: 'about' },
+                    { id: 'carrier_prefix', title: 'carrier_prefix' },
+                    { id: 'first_verified_at', title: 'first_verified_at' },
+                    { id: 'last_verified_at', title: 'last_verified_at' }
+                ]
+            });
+            await csvWriter.writeRecords([]);
+            console.log('📝 Created new master file for verified WhatsApp numbers');
+        }
+    }
+
+    async appendVerifiedNumberImmediately(result) {
+        // Only append if number is verified and not already in our set
+        if (result.is_registered && !this.verifiedNumbers.has(result.number)) {
+            const verifiedEntry = {
+                number: result.number,
+                whatsapp_id: result.whatsapp_id || '',
+                has_profile_pic: false, // Safe mode doesn't check profile pics
+                about: '',
+                carrier_prefix: result.number ? result.number.substring(0, 3) : '',
+                first_verified_at: result.checked_at,
+                last_verified_at: result.checked_at
+            };
+
+            const csvWriter = createObjectCsvWriter({
+                path: this.masterFile,
+                header: [
+                    { id: 'number', title: 'number' },
+                    { id: 'whatsapp_id', title: 'whatsapp_id' },
+                    { id: 'has_profile_pic', title: 'has_profile_pic' },
+                    { id: 'about', title: 'about' },
+                    { id: 'carrier_prefix', title: 'carrier_prefix' },
+                    { id: 'first_verified_at', title: 'first_verified_at' },
+                    { id: 'last_verified_at', title: 'last_verified_at' }
+                ],
+                append: true
+            });
+
+            await csvWriter.writeRecords([verifiedEntry]);
+            this.verifiedNumbers.add(result.number);
+            
+            // Optional: log immediately appended numbers (can be disabled for less console output)
+            console.log(`   ✅ Immediately saved verified number: ${result.number}`);
+        }
     }
 
     delay(ms) {
